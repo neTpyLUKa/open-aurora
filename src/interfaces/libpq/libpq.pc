@@ -1,0 +1,9 @@
+Name: libpq
+Description: PostgreSQL libpq library
+Url: http://www.postgresql.org/
+Version: 12.0
+Requires: 
+Requires.private: 
+Cflags: -I/home/kiruha/pgsql1/include
+Libs: -L/home/kiruha/pgsql1/lib -lpq
+Libs.private:  -lcrypt -lm
