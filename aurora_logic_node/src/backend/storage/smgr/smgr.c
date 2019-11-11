@@ -583,12 +583,86 @@ smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum)
  *		instantiate pages in the shared buffer cache.  All storage managers
  *		return pages in the format that POSTGRES expects.
  */
+
+// Code starts here
+
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <string.h>
+
+bool A_inited_connections = false;
+const int A_n_nodes = 1;
+const int A_port = 5000;
+int A_sockfd;
+int A_cl[A_n_nodes];
+int A_pagesize = 8192;
+
+void A_init() {
+    A_inited_connections = true;
+    
+    int A_sockfd = socket(PF_INET, SOCK_STREAM, 0);
+    if (A_sockfd < 0) {
+        fprintf(stderr, "Error creating socket\n");
+        exit(1);
+    }
+
+    int val = 1;
+    setsockopt(A_sockfd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
+    setsockopt(A_sockfd, SOL_SOCKET, SO_REUSEPORT, &val, sizeof(val));
+    struct sockaddr_in info;
+    info.sin_addr.s_addr = INADDR_ANY;
+    info.sin_family = AF_INET;
+    info.sin_port = A_port;
+
+    if (bind(A_sockfd, (struct sockaddr*)&info, sizeof(info)) < 0) {
+        fprintf(stderr, "Error setting socket params\n");
+        exit(1);
+    }
+
+    if (listen(A_sockfd, 5) < 0) {
+        fprintf(stderr, "Too many connections?\n");
+        exit(1);
+    }
+
+    int tmp = -1;
+
+    for (int i = 0; i < A_n_nodes; ++i) {
+        struct sockaddr_in paddr;
+        socklen_t len = sizeof(paddr);
+        int cl = accept(A_sockfd, (struct sockaddr*)&paddr, &len);
+        if (cl < 0) {
+            fprintf(stderr, "Error accepting new connection\n");
+            exit(1);
+        }
+        A_cl[i] = cl;
+    }
+}
+
+struct A_msg {
+    struct RelFileNode rfn;
+    ForkNumber forknum;
+    BlockNumber blocknum;
+};
+
 void
 smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		 char *buffer)
 {
-	smgrsw[reln->smgr_which].smgr_read(reln, forknum, blocknum, buffer);
+    if (!A_inited_connections) {
+        A_init();
+    }
+    struct A_msg msg = {*((RelFileNode*)reln), forknum, blocknum};
+    write(A_cl[0], &msg, sizeof(msg));
+    read(A_cl[0], buffer, sizeof(A_pagesize));
+    //	smgrsw[reln->smgr_which].smgr_read(reln, forknum, blocknum, buffer);
 }
+
+// Code ends here
 
 /*
  *	smgrwrite() -- Write the supplied buffer out.
