@@ -61,12 +61,12 @@ void
 #endif
 read_functions_mon_main(Datum main_arg)
 {
-    elog(WARNING, "Oh, shit! IT'S ALIVE!!!");
+    elog(WARNING, "IT'S ALIVE!!!");
     proc_exit(0);
 }
 
 
-// Define variables
+// Define variables example
 static void
 read_functions_mon_load_params(void)
 {
