@@ -251,9 +251,11 @@ repl_mon_main(Datum main_arg)
             fprintf(stderr, "Error reading from Primary node\n");
             proc_exit(1);
         }
+
         Relation rel = RelationIdGetRelation(rfn.relNode);
         Buffer buf = ReadBufferExtended(rel, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
         char* ptr = BufferGetPage(buf);
+        
         if (write(sockfd, ptr, A_pagesize) < A_pagesize) {
             fprintf(stderr, "Error sending page\n");
             proc_exit(1);

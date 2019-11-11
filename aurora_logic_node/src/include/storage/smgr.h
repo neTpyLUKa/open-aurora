@@ -107,4 +107,6 @@ extern void smgrtruncate(SMgrRelation reln, ForkNumber forknum,
 extern void smgrimmedsync(SMgrRelation reln, ForkNumber forknum);
 extern void AtEOXact_SMgr(void);
 
+bool enable_remote_storage;
+
 #endif							/* SMGR_H */

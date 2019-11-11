@@ -78,6 +78,7 @@
 #include "storage/pg_shmem.h"
 #include "storage/proc.h"
 #include "storage/predicate.h"
+#include "storage/smgr.h"
 #include "tcop/tcopprot.h"
 #include "tsearch/ts_cache.h"
 #include "utils/builtins.h"
@@ -880,6 +881,18 @@ static const unit_conversion time_unit_conversion_table[] =
 
 static struct config_bool ConfigureNamesBool[] =
 {
+    {
+		{"enable_remote_storage", PGC_SIGHUP, WAL_SETTINGS,
+			gettext_noop("Forces synchronization of updates to disk."),
+			gettext_noop("The server will use the fsync() system call in several places to make "
+						 "sure that updates are physically written to disk. This insures "
+						 "that a database cluster will recover to a consistent state after "
+						 "an operating system or hardware crash.")
+		},
+		&enable_remote_storage,
+		false,
+		NULL, NULL, NULL
+	},
 	{
 		{"enable_seqscan", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of sequential-scan plans."),

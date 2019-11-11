@@ -596,15 +596,19 @@ smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum)
 #include <string.h>
 
 bool A_inited_connections = false;
-const int A_n_nodes = 1;
+#define A_n_nodes 1
 const int A_port = 5000;
 int A_sockfd;
 int A_cl[A_n_nodes];
 int A_pagesize = 8192;
+FILE* A_logs;
+
 
 void A_init() {
     A_inited_connections = true;
-    
+
+    A_logs = fopen("~/logs", "w");
+
     int A_sockfd = socket(PF_INET, SOCK_STREAM, 0);
     if (A_sockfd < 0) {
         fprintf(stderr, "Error creating socket\n");
@@ -629,8 +633,6 @@ void A_init() {
         exit(1);
     }
 
-    int tmp = -1;
-
     for (int i = 0; i < A_n_nodes; ++i) {
         struct sockaddr_in paddr;
         socklen_t len = sizeof(paddr);
@@ -653,13 +655,28 @@ void
 smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		 char *buffer)
 {
+    //fprintf(stderr, "in smgrread\n");
+    if (!enable_remote_storage) {
+  	    smgrsw[reln->smgr_which].smgr_read(reln, forknum, blocknum, buffer);
+        return;
+    }
+
     if (!A_inited_connections) {
         A_init();
     }
+ 
+    fprintf(A_logs, "Read called\n");
+    fflush(A_logs);
+
     struct A_msg msg = {*((RelFileNode*)reln), forknum, blocknum};
-    write(A_cl[0], &msg, sizeof(msg));
-    read(A_cl[0], buffer, sizeof(A_pagesize));
-    //	smgrsw[reln->smgr_which].smgr_read(reln, forknum, blocknum, buffer);
+    if (write(A_cl[0], &msg, sizeof(msg)) < sizeof(msg)) {
+        fprintf(stderr, "Error writing to storage node\n");
+        exit(1);
+    }
+    if (read(A_cl[0], buffer, sizeof(A_pagesize)) < sizeof(A_pagesize)) {
+        fprintf(stderr, "Error reading page from storage node\n");
+        exit(1);
+    }
 }
 
 // Code ends here
