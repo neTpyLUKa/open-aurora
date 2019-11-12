@@ -597,7 +597,7 @@ smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum)
 
 bool A_inited_connections = false;
 #define A_n_nodes 1
-const int A_port = 5000;
+const int A_port = 15000;
 int A_sockfd;
 int A_cl[A_n_nodes];
 int A_pagesize = 8192;
@@ -606,14 +606,20 @@ FILE* A_logs;
 
 void A_init() {
     A_inited_connections = true;
+    
+    A_logs = fopen("/home/kiruha/logic_logs", "a");
 
-    A_logs = fopen("~/logs", "w");
+    fprintf(A_logs, "Initializing socket...\n");
+    fflush(A_logs);
 
     int A_sockfd = socket(PF_INET, SOCK_STREAM, 0);
     if (A_sockfd < 0) {
-        fprintf(stderr, "Error creating socket\n");
+        fprintf(A_logs, "Error creating socket\n");
         exit(1);
     }
+
+    fprintf(A_logs, "Socket created\n");
+    fflush(A_logs);
 
     int val = 1;
     setsockopt(A_sockfd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
@@ -621,26 +627,33 @@ void A_init() {
     struct sockaddr_in info;
     info.sin_addr.s_addr = INADDR_ANY;
     info.sin_family = AF_INET;
-    info.sin_port = A_port;
+    info.sin_port = htons(A_port);
 
     if (bind(A_sockfd, (struct sockaddr*)&info, sizeof(info)) < 0) {
-        fprintf(stderr, "Error setting socket params\n");
+        fprintf(A_logs, "Error setting socket params\n");
         exit(1);
     }
+
+    fprintf(A_logs, "Port %d binded\n", A_port);
+    fflush(A_logs);
 
     if (listen(A_sockfd, 5) < 0) {
-        fprintf(stderr, "Too many connections?\n");
+        fprintf(A_logs, "Too many connections?\n");
         exit(1);
     }
-
+    
     for (int i = 0; i < A_n_nodes; ++i) {
+        fprintf(A_logs, "Accepting connection %d\n", i);
+        fflush(A_logs);
         struct sockaddr_in paddr;
         socklen_t len = sizeof(paddr);
         int cl = accept(A_sockfd, (struct sockaddr*)&paddr, &len);
         if (cl < 0) {
-            fprintf(stderr, "Error accepting new connection\n");
+            fprintf(A_logs, "Error accepting new connection\n");
             exit(1);
         }
+        fprintf(A_logs, "Connection accepted\n");
+        fflush(A_logs);
         A_cl[i] = cl;
     }
 }
@@ -660,23 +673,27 @@ smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
   	    smgrsw[reln->smgr_which].smgr_read(reln, forknum, blocknum, buffer);
         return;
     }
-
+   
     if (!A_inited_connections) {
         A_init();
     }
- 
-    fprintf(A_logs, "Read called\n");
-    fflush(A_logs);
-
+  
     struct A_msg msg = {*((RelFileNode*)reln), forknum, blocknum};
     if (write(A_cl[0], &msg, sizeof(msg)) < sizeof(msg)) {
-        fprintf(stderr, "Error writing to storage node\n");
+        fprintf(A_logs, "Error writing to storage node\n");
         exit(1);
     }
+
+    fprintf(A_logs, "Message written\n");
+    fflush(A_logs);
+
     if (read(A_cl[0], buffer, sizeof(A_pagesize)) < sizeof(A_pagesize)) {
-        fprintf(stderr, "Error reading page from storage node\n");
+        fprintf(A_logs, "Error reading page from storage node\n");
         exit(1);
     }
+
+    fprintf(A_logs, "Message read\n");
+    fflush(A_logs);
 }
 
 // Code ends here

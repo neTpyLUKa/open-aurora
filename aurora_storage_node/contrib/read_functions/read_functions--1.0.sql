@@ -1,0 +1,4 @@
+CREATE FUNCTION read_functions_mon_main(text)
+RETURNS VOID
+AS 'MODULE_PATHNAME'
+LANGUAGE C;

@@ -1,0 +1,6 @@
+# read_functions extension
+comment = 'read_functions access method - signature file based index'
+default_version = '1.0'
+module_pathname = '$libdir/read_functions'
+relocatable = true
+
