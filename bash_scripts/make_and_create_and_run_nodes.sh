@@ -65,7 +65,7 @@ echo "Database Initialisation:"
 echo port=$1 >> ~/LocalDB/Logic_node/postgresql.conf
 
 echo "Start of Primary node:"
-./pg_ctl -D ~/LocalDB/Logic_node start
+./pg_ctl -D ~/LocalDB/Logic_node -l ~/LocalDB/pg_logic_logs start
 echo "CREATE EXTENSION read_functions;" | ./psql postgres -p $1
 
 cd ../../../aurora_storage_node/pgsql1/bin
@@ -80,8 +80,10 @@ do
 	echo port=$(($1 + $node_number)) >> ~/LocalDB/Storage_node_$node_number/postgresql.conf
  #   echo "shared_preload_libraries='read_functions'" >> ~/LocalDB/Storage_node_$node_number/postgresql.conf
 	echo "Start storage node"
-	./pg_ctl -D ~/LocalDB/Storage_node_$node_number/ start
+	./pg_ctl -D ~/LocalDB/Storage_node_$node_number/ -l ~/LocalDB/pg_storage_logs start
 
 	echo "SELECT read_functions_mon_main('');" | ./psql postgres -p $(($1 + $node_number))
   #  echo "load 'read_functions';" | ./psql postgres -p $(($1 + $node_number))
 done
+
+
