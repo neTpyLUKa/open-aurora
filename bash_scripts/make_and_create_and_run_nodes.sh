@@ -62,6 +62,8 @@ fi
 echo "Database Initialisation:"
 ./initdb ~/LocalDB/Logic_node
 
+echo -n -e "\0\0\0\0" > ~/LocalDB/number
+
 echo port=$1 >> ~/LocalDB/Logic_node/postgresql.conf
 
 echo "Start of Primary node:"
@@ -82,10 +84,10 @@ do
 	echo "Start storage node"
 	./pg_ctl -D ~/LocalDB/Storage_node_$node_number/ -l ~/LocalDB/pg_storage_logs start
 
-	for backend_id in {1..20}
+	for backend_id in {0..50}
 	do
-		echo "Start function with backend"
-		echo "SELECT read_functions_mon_main('$backend_id');" | ./psql postgres -p $(($1 + $node_number)) &
+        echo "Start function with backend"
+		echo "SELECT read_functions_mon_main($backend_id);" | ./psql postgres -p $(($1 + $node_number)) &
 	done
   #  echo "load 'read_functions';" | ./psql postgres -p $(($1 + $node_number))
 done

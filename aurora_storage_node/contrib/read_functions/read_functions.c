@@ -20,10 +20,13 @@
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/proc.h"
+#include "storage/bufmgr.h"
 #include "utils/guc.h"
 #include "utils/snapmgr.h"
 /* Needed for getting hostname of the host */
 #include "unistd.h"
+
+#include "assert.h"
 
 /* Allow load of this module in shared libs */
 PG_MODULE_MAGIC;
@@ -76,34 +79,27 @@ static char *get_current_lsn = "pg_current_xlog_location()";
 
 FILE* A_logs;
 
-int A_connect() {
+int A_connect(int shift) {
     char address[] = "127.0.0.1";
-    int port = 15000;
-    struct sockaddr_in sin;
-    struct hostent *phe;
-    if (!(phe = gethostbyname(address))) {
-        fprintf(A_logs, "Error getting host by address\n");
-        fflush(A_logs);
-        return -1;
-    }
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(port);
+    int port = 16000 + shift;
+    struct sockaddr_in sin; 
     
-    memcpy(&sin.sin_addr, phe->h_addr_list[0], sizeof(sin.sin_addr)); 
+    sin.sin_family = AF_INET; 
+    sin.sin_port = htons(port); 
+    sin.sin_addr.s_addr = inet_addr(address);
+
     int sockfd = socket(PF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         fprintf(A_logs, "Error creating socket\n");
         fflush(A_logs);
         return -1;
-    }
-
+    } 
+    
     fprintf(A_logs, "Socket created\n");
     fflush(A_logs);
-
-    if (connect(sockfd, (struct sockaddr*)&sin, sizeof(sin)) < 0) {
-        fprintf(A_logs, "Error connection to socket\n");
-        fflush(A_logs);
-        return -1;
+    
+    while (connect(sockfd, (struct sockaddr*)&sin, sizeof(sin)) < 0) {
+        sleep(1);
     }
 
     fprintf(A_logs, "Connection established\n");
@@ -125,32 +121,66 @@ Datum
 read_functions_mon_main(PG_FUNCTION_ARGS)
 {
     /* Register functions for SIGTERM/SIGHUP management */
-    A_logs = fopen("/home/kiruha/storage_logs", "a");
-    fprintf(A_logs, "File created!\n");
-    fflush(A_logs);
-   // elog(WARNING, "MESSASSGAGE\n");
-    int sockfd;
-    while ((sockfd = A_connect()) == -1) {
-        sleep(1);
-        fprintf(A_logs, "Retrying...\n");
-        fflush(A_logs);
+    elog(LOG, "-----------------------------------------------------------\n");
+    int shift = PG_GETARG_INT32(0);
+    elog(LOG, "arg=%d\n", shift);
+    int sockfd = A_connect(shift);
+    if (sockfd == -1) {
+        PG_RETURN_VOID();
     }
+
+    int my_sln = 0;
 
     while (true) {
         struct A_msg msg;
         if (read(sockfd, &msg, sizeof(msg)) < sizeof(msg)) {
-            fprintf(A_logs, "Error reading from Primary node\n");
-            proc_exit(1);
+            elog(LOG, "Error reading from Primary node\n");
+          //  fflush(A_logs);
+            PG_RETURN_VOID();
         }
 
-        Relation rel = RelationIdGetRelation(msg.rfn.relNode);
-        Buffer buf = ReadBufferExtended(rel, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
+        elog(LOG, "Message read %d\n", my_sln);
+       // fflush(A_logs);
+
+        Relation rel = NULL;
+
+        int try_num = 0;
+
+        elog(LOG, "relNode = %d\n", msg.rfn.relNode);
+
+        while (true) {
+            elog(LOG, "Try Number %d\n", try_num++);
+
+            LockRelationOid(msg.rfn.relNode, RowExclusiveLock);
+
+            rel = RelationIdGetRelation(msg.rfn.relNode);
+
+            UnlockRelationOid(msg.rfn.relNode, RowExclusiveLock);
+            
+            if (rel != NULL) {
+                break;
+            }
+            
+            sleep(1);
+        }
+
+        elog(LOG, "Got relation\n");
+       // fflush(A_logs);
+   //    Buffer buf = ReadBufferWithoutRelcache(msg.rfn, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
+         Buffer buf = ReadBufferExtended(rel, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
+        elog(LOG, "Got buffer\n");
+       // fflush(A_logs);
         char* ptr = BufferGetPage(buf);
         
+        elog(LOG, "Start send\n");
         if (write(sockfd, ptr, A_pagesize) < A_pagesize) {
-            fprintf(A_logs, "Error sending page\n");
-            proc_exit(1);
+            elog(LOG, "Error sending page\n");
+           // fflush(A_logs);
+            PG_RETURN_VOID();
         }
+
+        elog(LOG, "Message written %d\n", my_sln++);
+       // fflush(A_logs);
     }
 
     /* No problems, so clean exit */
