@@ -82,7 +82,11 @@ do
 	echo "Start storage node"
 	./pg_ctl -D ~/LocalDB/Storage_node_$node_number/ -l ~/LocalDB/pg_storage_logs start
 
-	echo "SELECT read_functions_mon_main('');" | ./psql postgres -p $(($1 + $node_number))
+	for backend_id in {1..20}
+	do
+		echo "Start function with backend"
+		echo "SELECT read_functions_mon_main('$backend_id');" | ./psql postgres -p $(($1 + $node_number)) &
+	done
   #  echo "load 'read_functions';" | ./psql postgres -p $(($1 + $node_number))
 done
 
