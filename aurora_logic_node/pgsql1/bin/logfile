@@ -1,0 +1,2 @@
+2020-03-12 07:18:52.660 MSK [25951] FATAL:  lock file "postmaster.pid" already exists
+2020-03-12 07:18:52.660 MSK [25951] HINT:  Is another postmaster (PID 24886) running in data directory "/home/kiruha/LocalDB/Logic_node"?
