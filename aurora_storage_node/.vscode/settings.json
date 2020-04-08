@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "gist_private.h": "c",
+        "buf.h": "c"
+    }
+}

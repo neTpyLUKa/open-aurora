@@ -134,13 +134,11 @@ read_functions_mon_main(PG_FUNCTION_ARGS)
     while (true) {
         struct A_msg msg;
         if (read(sockfd, &msg, sizeof(msg)) < sizeof(msg)) {
-            elog(LOG, "Error reading from Primary node\n");
-          //  fflush(A_logs);
+            elog(LOG, "Error reading from Primary node\n"); // accept new connection? todo
             PG_RETURN_VOID();
         }
 
         elog(LOG, "Message read %d\n", my_sln);
-       // fflush(A_logs);
 
         Relation rel = NULL;
 
@@ -151,39 +149,41 @@ read_functions_mon_main(PG_FUNCTION_ARGS)
         while (true) {
             elog(LOG, "Try Number %d\n", try_num++);
 
-            LockRelationOid(msg.rfn.relNode, RowExclusiveLock);
+            LockRelationOid(msg.rfn.relNode, AccessShareLock);
 
-            rel = RelationIdGetRelation(msg.rfn.relNode);
+            rel = RelationIdGetRelation(msg.rfn.relNode); // lock shared? todo
 
-            UnlockRelationOid(msg.rfn.relNode, RowExclusiveLock);
             
-            if (rel != NULL) {
+            if (rel != NULL) { // todo release relation ??
                 break;
             }
             
-            sleep(1);
+            sleep(1); // todo remove sleep or shorten ?
         }
 
         elog(LOG, "Got relation\n");
-       // fflush(A_logs);
-   //    Buffer buf = ReadBufferWithoutRelcache(msg.rfn, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
-         Buffer buf = ReadBufferExtended(rel, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
+     //    Buffer buf = ReadBufferWithoutRelcache(msg.rfn, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
+        Buffer buf = ReadBuffer(rel, msg.blocknum);
+        
+        LockBuffer(buf, BUFFER_LOCK_SHARE);
+        // Buffer buf = ReadBufferExtended(rel, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
         elog(LOG, "Got buffer\n");
-       // fflush(A_logs);
         char* ptr = BufferGetPage(buf);
         
         elog(LOG, "Start send\n");
         if (write(sockfd, ptr, A_pagesize) < A_pagesize) {
             elog(LOG, "Error sending page\n");
-           // fflush(A_logs);
+            ReleaseBuffer(buf);
             PG_RETURN_VOID();
         }
 
         elog(LOG, "Message written %d\n", my_sln++);
-       // fflush(A_logs);
+        UnlockReleaseBuffer(buf);
+        RelationClose(rel);
+        UnlockRelationOid(msg.rfn.relNode, AccessShareLock);
     }
 
-    /* No problems, so clean exit */
+    /* How I get here? */
     PG_RETURN_VOID();
 }
 

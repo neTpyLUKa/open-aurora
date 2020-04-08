@@ -19,7 +19,8 @@ CREATE TABLE link (
 insert into link values(1337, 1337, 1337, 1337, 1337);
 " | ./psql postgres -p $1
 
+
 echo "Restarting DB"
-./pg_ctl -D ~/LocalDB/Logic_node -l ~/LocalDB/pg_storage_logs stop
-./pg_ctl -D ~/LocalDB/Logic_node -l ~/LocalDB/pg_storage_logs start
+./pg_ctl -D ../../../LocalDB/Logic_node -l ../../../LocalDB/pg_storage_logs stop
+./pg_ctl -D ../../../LocalDB/Logic_node -l ../../../LocalDB/pg_storage_logs start
 

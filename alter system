@@ -1,0 +1,11 @@
+alter system set enable_remote_storage to on;
+
+select pg_reload_conf();
+
+create table t(int integer);
+
+insert into t values(1);
+insert into t values(1);
+insert into t values(1);
+
+select * from t;

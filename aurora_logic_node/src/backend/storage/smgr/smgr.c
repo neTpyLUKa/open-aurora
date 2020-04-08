@@ -608,11 +608,11 @@ bool A_inited = false;
 
 
 #define SIGHUP 1
-
+#define LocalDBPath "/home/kiruha/progs/open-aurora/LocalDB/number"
 extern pid_t  PostmasterPid;
 
 void A_init() {
-    int fd = open("/home/kiruha/LocalDB/number", O_RDONLY);
+    int fd = open(LocalDBPath, O_RDONLY);
     if (fd < 0) {
         elog(LOG, "Error opening file\n");
         exit(1);
@@ -628,7 +628,7 @@ void A_init() {
 
     close(fd);
 
-    fd = open("/home/kiruha/LocalDB/number", O_WRONLY);
+    fd = open(LocalDBPath, O_WRONLY);
 
     ++shift;
 
@@ -708,7 +708,7 @@ smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
    
    // LWLockAcquire(SmgrReadLock, LW_EXCLUSIVE);
 
-    elog(LOG, "LWLock acquired\n");
+  //  elog(LOG, "LWLock acquired\n");
     
     if (!A_inited) {
         A_inited = true;
@@ -732,7 +732,7 @@ smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 
   //  LWLockRelease(SmgrReadLock);
 
-    elog(LOG, "LWLock released\n");
+   // elog(LOG, "LWLock released\n");
 }
 
 // Code ends here

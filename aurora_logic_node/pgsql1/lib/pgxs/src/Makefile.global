@@ -59,8 +59,8 @@ endif
 endif
 else # not PGXS
 vpath_build = no
-abs_top_builddir = /home/kiruha/open-aurora/open-aurora/aurora_logic_node
-abs_top_srcdir = /home/kiruha/open-aurora/open-aurora/aurora_logic_node
+abs_top_builddir = /home/kiruha/progs/open-aurora/aurora_logic_node
+abs_top_srcdir = /home/kiruha/progs/open-aurora/aurora_logic_node
 
 ifneq ($(vpath_build),yes)
 top_srcdir = $(top_builddir)
@@ -75,7 +75,7 @@ endif # not PGXS
 vpathsearch = `for f in $(addsuffix /$(1),$(subst :, ,. $(VPATH))); do test -r $$f && echo $$f && break; done`
 
 # Saved arguments from configure
-configure_args =  '--prefix=/home/kiruha/open-aurora/open-aurora/aurora_logic_node/pgsql1' '--enable-depend' '--enable-cassert'
+configure_args =  '--prefix=/home/kiruha/progs/open-aurora/aurora_logic_node/pgsql1' '--enable-depend' '--enable-cassert'
 
 
 ##########################################################################
@@ -95,7 +95,7 @@ ifndef PGXS
 # Note that prefix, exec_prefix, and datarootdir aren't defined in a PGXS build;
 # makefiles may only use the derived variables such as bindir.
 
-prefix := /home/kiruha/open-aurora/open-aurora/aurora_logic_node/pgsql1
+prefix := /home/kiruha/progs/open-aurora/aurora_logic_node/pgsql1
 exec_prefix := ${prefix}
 datarootdir := ${prefix}/share
 
@@ -339,13 +339,13 @@ perl_embed_ldflags	=
 
 # Miscellaneous
 
-AWK	= gawk
+AWK	= mawk
 LN_S	= ln -s
 MSGFMT  = 
 MSGFMT_FLAGS = 
 MSGMERGE = 
 PYTHON	= 
-TAR	= /bin/tar
+TAR	= /usr/bin/tar
 XGETTEXT = 
 
 GZIP	= gzip
@@ -461,7 +461,7 @@ INSTALL_SHLIB	= $(INSTALL_SHLIB_ENV) $(INSTALL) $(INSTALL_SHLIB_OPTS) $(INSTALL_
 # Override in Makefile.port if necessary
 INSTALL_SHLIB_OPTS = -m 755
 
-MKDIR_P = /bin/mkdir -p
+MKDIR_P = /usr/bin/mkdir -p
 
 missing		= $(SHELL) $(top_srcdir)/config/missing
 

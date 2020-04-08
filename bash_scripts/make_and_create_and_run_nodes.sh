@@ -1,5 +1,7 @@
 #!/bin/bash
 
+readonly DB_PATH=
+
 if [ "$#" -lt 1 ]; then
     echo "Usage: $0 port"
     exit 1
@@ -50,25 +52,26 @@ if ! (make install) > /dev/null; then
     echo "Error storage extention compilation"
     exit 1
 fi
-cd ../../
 
-cd ../aurora_logic_node/pgsql1/bin
+cd ../../../
 
-if [ -d ~/LocalDB ]; then
+if [ -d LocalDB ]; then
     echo "Remove old Database"
-    rm -rf ~/LocalDB
+    rm -rf LocalDB
 fi
 
 echo "Database Initialisation:"
-./initdb ~/LocalDB/Logic_node
+./aurora_logic_node/pgsql1/bin/initdb LocalDB/Logic_node
 
-echo -n -e "\0\0\0\0" > ~/LocalDB/number
+echo -n -e "\0\0\0\0" > LocalDB/number
 
-echo port=$1 >> ~/LocalDB/Logic_node/postgresql.conf
+echo port=$1 >> LocalDB/Logic_node/postgresql.conf
+
+cd aurora_logic_node/pgsql1/bin
 
 echo "Start of Primary node:"
-./pg_ctl -D ~/LocalDB/Logic_node -l ~/LocalDB/pg_logic_logs start
-echo "CREATE EXTENSION read_functions;" | ./psql postgres -p $1
+./pg_ctl -D../../../LocalDB/Logic_node -l ../../../LocalDB/pg_logic_logs start
+./psql postgres -p $1 -c "CREATE EXTENSION read_functions;"
 
 cd ../../../aurora_storage_node/pgsql1/bin
 
@@ -77,17 +80,17 @@ do
 	echo "Creating storage node_"$node_number" on port: $(($1 + $node_number))"
 	#./initdb ~/LocalDB/Storage_node_$node_number
 
-    ./pg_basebackup -p $1 -D ~/LocalDB/Storage_node_$node_number -Fp -Xs -P -R
+    ./pg_basebackup -p $1 -D ../../../LocalDB/Storage_node_$node_number -Fp -Xs -P -R
 	echo "Change config"
-	echo port=$(($1 + $node_number)) >> ~/LocalDB/Storage_node_$node_number/postgresql.conf
+	echo port=$(($1 + $node_number)) >> ../../../LocalDB/Storage_node_$node_number/postgresql.conf
  #   echo "shared_preload_libraries='read_functions'" >> ~/LocalDB/Storage_node_$node_number/postgresql.conf
 	echo "Start storage node"
-	./pg_ctl -D ~/LocalDB/Storage_node_$node_number/ -l ~/LocalDB/pg_storage_logs start
+	./pg_ctl -D ../../../LocalDB/Storage_node_$node_number/ -l ../../../LocalDB/pg_storage_logs start
 
-	for backend_id in {0..50}
+	for backend_id in {0..1}
 	do
         echo "Start function with backend"
-		echo "SELECT read_functions_mon_main($backend_id);" | ./psql postgres -p $(($1 + $node_number)) &
+	./psql postgres -p $(($1 + $node_number)) -c "SELECT read_functions_mon_main($backend_id);" &
 	done
   #  echo "load 'read_functions';" | ./psql postgres -p $(($1 + $node_number))
 done
