@@ -77,35 +77,51 @@ static char *get_current_lsn = "pg_current_xlog_location()";
 #include <stdlib.h>
 #include <string.h>
 
-FILE* A_logs;
+int A_sockfd = -1;
 
-int A_connect(int shift) {
-    char address[] = "127.0.0.1";
-    int port = 16000 + shift;
-    struct sockaddr_in sin; 
-    
-    sin.sin_family = AF_INET; 
-    sin.sin_port = htons(port); 
-    sin.sin_addr.s_addr = inet_addr(address);
+int accept_connection() {
+    int port = 16000;
+    elog(LOG, "----------------------------------------------------------------------------------\n");
+    elog(LOG, "Initializing socket..., id=%d\n", MyBackendId);
 
-    int sockfd = socket(PF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-        fprintf(A_logs, "Error creating socket\n");
-        fflush(A_logs);
-        return -1;
-    } 
+    if (A_sockfd == -1) {
+        A_sockfd = socket(PF_INET, SOCK_STREAM, 0);
+        if (A_sockfd < 0) {
+            elog(PANIC, "Error creating socket\n");
+        }
+
+        elog(LOG, "Socket created\n");
     
-    fprintf(A_logs, "Socket created\n");
-    fflush(A_logs);
+        int val = 1;
+        setsockopt(A_sockfd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
+        setsockopt(A_sockfd, SOL_SOCKET, SO_REUSEPORT, &val, sizeof(val));
+        struct sockaddr_in info;
+        info.sin_addr.s_addr = INADDR_ANY;
+        info.sin_family = AF_INET;
+        info.sin_port = htons(port);
+
+        if (bind(A_sockfd, (struct sockaddr*)&info, sizeof(info)) < 0) {
+            elog(PANIC, "Error setting socket params");
+            return -1;
+        }
+
+        elog(LOG, "Port %d binded", port);
     
-    while (connect(sockfd, (struct sockaddr*)&sin, sizeof(sin)) < 0) {
-        sleep(1);
+        if (listen(A_sockfd, 5) < 0) {
+            elog(PANIC, "Too many connections?");
+        }
     }
-
-    fprintf(A_logs, "Connection established\n");
-    fflush(A_logs);
-
-    return sockfd;
+    
+    elog(LOG, "Accepting connection");
+    struct sockaddr_in paddr;
+    socklen_t len = sizeof(paddr); // todo fork
+    int cl = accept(A_sockfd, (struct sockaddr*)&paddr, &len);
+    if (cl < 0) {
+        elog(PANIC, "Error accepting new connection");
+        return -1;
+    }
+    elog(LOG, "Connection accepted\n");
+    return cl;
 }
 
 struct A_msg {
@@ -114,76 +130,83 @@ struct A_msg {
     BlockNumber blocknum;
 };
 
-const int A_pagesize = 8192;
+const int A_pagesize = 8192; // todo use GetPageSize instead
 
 PG_FUNCTION_INFO_V1(read_functions_mon_main);
 Datum
-read_functions_mon_main(PG_FUNCTION_ARGS)
+read_functions_mon_main(PG_FUNCTION_ARGS) // todo fix signature (now accepting int, need void)
 {
-    /* Register functions for SIGTERM/SIGHUP management */
-    elog(LOG, "-----------------------------------------------------------\n");
-    int shift = PG_GETARG_INT32(0);
-    elog(LOG, "arg=%d\n", shift);
-    int sockfd = A_connect(shift);
-    if (sockfd == -1) {
-        PG_RETURN_VOID();
-    }
-
-    int my_sln = 0;
-
     while (true) {
-        struct A_msg msg;
-        if (read(sockfd, &msg, sizeof(msg)) < sizeof(msg)) {
-            elog(LOG, "Error reading from Primary node\n"); // accept new connection? todo
-            PG_RETURN_VOID();
+        elog(LOG, "-----------------------------------------------------------\n");
+        int sockfd = accept_connection();
+        if (sockfd == -1) {
+            elog(LOG, "Error accepting connection, retrying...");
+            continue;
         }
 
-        elog(LOG, "Message read %d\n", my_sln);
-
-        Relation rel = NULL;
-
-        int try_num = 0;
-
-        elog(LOG, "relNode = %d\n", msg.rfn.relNode);
+        pid_t ch_pid = fork_process(); // fork wrapper
+        if (ch_pid < 0) {
+            elog(FATAL, "Error forking");
+        } else if (ch_pid > 0) { // in parent
+            continue;
+        }
+        
+        int my_sln = 0;
 
         while (true) {
-            elog(LOG, "Try Number %d\n", try_num++);
-
-            LockRelationOid(msg.rfn.relNode, AccessShareLock);
-
-            rel = RelationIdGetRelation(msg.rfn.relNode); // lock shared? todo
-
-            
-            if (rel != NULL) { // todo release relation ??
-                break;
+            struct A_msg msg;
+            if (read(sockfd, &msg, sizeof(msg)) < sizeof(msg)) {
+                elog(LOG, "Error reading from Primary node\n");
+                close(sockfd);
+                proc_exit(1);
             }
+
+            elog(LOG, "Message read %d\n", my_sln);
+
+            Relation rel = NULL;
+
+            int try_num = 0;
+
+            elog(LOG, "relNode = %d\n", msg.rfn.relNode);
+
+            while (true) {
+                elog(LOG, "Try Number %d\n", try_num++);
+
+                LockRelationOid(msg.rfn.relNode, AccessShareLock);
+
+                rel = RelationIdGetRelation(msg.rfn.relNode);
+
+                
+                if (rel != NULL) {
+                    break;
+                }
+            }
+
+            elog(LOG, "Got relation\n");
+          //  Buffer buf = ReadBufferWithoutRelcache(msg.rfn, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
+            Buffer buf = ReadBufferExtended(rel, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
+            //Buffer buf = ReadBuffer(rel, msg.blocknum); // todo use ReadBufferExtended, bypass forkNum
             
-            sleep(1); // todo remove sleep or shorten ?
-        }
+            LockBuffer(buf, BUFFER_LOCK_SHARE);
+            elog(LOG, "Got buffer\n");
+            char* ptr = BufferGetPage(buf);
+            
+            elog(LOG, "Start send\n");
+            if (write(sockfd, ptr, A_pagesize) < A_pagesize) {
+                elog(LOG, "Error sending page\n");
+                close(sockfd);
+                UnlockReleaseBuffer(buf);
+                relation_close(rel, AccessShareLock);
+                proc_exit(1);
+            }
 
-        elog(LOG, "Got relation\n");
-     //    Buffer buf = ReadBufferWithoutRelcache(msg.rfn, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
-        Buffer buf = ReadBuffer(rel, msg.blocknum);
-        
-        LockBuffer(buf, BUFFER_LOCK_SHARE);
-        // Buffer buf = ReadBufferExtended(rel, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
-        elog(LOG, "Got buffer\n");
-        char* ptr = BufferGetPage(buf);
-        
-        elog(LOG, "Start send\n");
-        if (write(sockfd, ptr, A_pagesize) < A_pagesize) {
-            elog(LOG, "Error sending page\n");
-            ReleaseBuffer(buf);
-            PG_RETURN_VOID();
+            elog(LOG, "Message written %d\n", my_sln++);
+            UnlockReleaseBuffer(buf);
+            relation_close(rel, AccessShareLock);
         }
-
-        elog(LOG, "Message written %d\n", my_sln++);
-        UnlockReleaseBuffer(buf);
-        RelationClose(rel);
-        UnlockRelationOid(msg.rfn.relNode, AccessShareLock);
     }
+    elog(PANIC, "How I get here?");
 
-    /* How I get here? */
     PG_RETURN_VOID();
 }
 

@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "gist_private.h": "c",
-        "buf.h": "c"
+        "buf.h": "c",
+        "fcntl.h": "c"
     }
 }

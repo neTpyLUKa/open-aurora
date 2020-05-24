@@ -601,32 +601,27 @@ smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum)
 
 #define A_n_nodes 1
 const int A_port = 16000;
-int A_sockfd;
-int A_cl[A_n_nodes];
+int storage_node_fd;
 int A_pagesize = 8192;
 bool A_inited = false;
 
 
-#define SIGHUP 1
-#define LocalDBPath "/home/kiruha/progs/open-aurora/LocalDB/number"
-extern pid_t  PostmasterPid;
-
-void A_init() {
-    int fd = open(LocalDBPath, O_RDONLY);
+void connect_storage() {
+    /*int fd = open(LocalDBPath, O_RDONLY);
     if (fd < 0) {
         elog(LOG, "Error opening file\n");
         exit(1);
-    }
+    }f
 
     int shift;
     if (read(fd, &shift, sizeof(int)) < sizeof(int)) {
         elog(LOG, "Error reading from file\n");
         exit(1);
-    }
+    }*/
 
-    int port = A_port + shift;
+    // + shift;
 
-    close(fd);
+/*    close(fd);
 
     fd = open(LocalDBPath, O_WRONLY);
 
@@ -638,50 +633,29 @@ void A_init() {
     }
 
     close(fd);
-     
-    elog(LOG, "----------------------------------------------------------------------------------\n");
-    elog(LOG, "Initializing socket..., id=%d\n", MyBackendId);
-
-    int A_sockfd = socket(PF_INET, SOCK_STREAM, 0);
-    if (A_sockfd < 0) {
-        elog(LOG, "Error creating socket\n");
-        exit(1);
-    }
-
-    elog(LOG, "Socket created\n");
- 
-    int val = 1;
-    setsockopt(A_sockfd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
-    setsockopt(A_sockfd, SOL_SOCKET, SO_REUSEPORT, &val, sizeof(val));
-    struct sockaddr_in info;
-    info.sin_addr.s_addr = INADDR_ANY;
-    info.sin_family = AF_INET;
-    info.sin_port = htons(port);
-
-    if (bind(A_sockfd, (struct sockaddr*)&info, sizeof(info)) < 0) {
-        elog(LOG, "Error setting socket params\n");
-        exit(1);
-    }
-
-    elog(LOG, "Port %d binded\n", port);
-   
-    if (listen(A_sockfd, 5) < 0) {
-        elog(LOG, "Too many connections?\n");
-        exit(1);
-    }
+  */   
+    char address[] = "127.0.0.1";
+    int port = 16000;
+    struct sockaddr_in sin; 
     
-    for (int i = 0; i < A_n_nodes; ++i) {
-        elog(LOG, "Accepting connection %d\n", i);
-        struct sockaddr_in paddr;
-        socklen_t len = sizeof(paddr);
-        int cl = accept(A_sockfd, (struct sockaddr*)&paddr, &len);
-        if (cl < 0) {
-            elog(LOG, "Error accepting new connection\n");
-            exit(1);
-        }
-        elog(LOG, "Connection accepted\n");
-        A_cl[i] = cl;
+    sin.sin_family = AF_INET; 
+    sin.sin_port = htons(port); 
+    sin.sin_addr.s_addr = inet_addr(address);
+
+    storage_node_fd = socket(PF_INET, SOCK_STREAM, 0);
+    if (storage_node_fd < 0) {
+        elog(PANIC, "Error creating socket\n");
+    } 
+    
+    elog(LOG, "Socket created");
+    
+    while (connect(storage_node_fd, (struct sockaddr*)&sin, sizeof(sin)) < 0) {
+		elog(LOG, "Some retrying...");
+        sleep(1);
     }
+
+    elog(LOG, "Connection established");
+    
 }
 
 struct A_msg {
@@ -690,47 +664,45 @@ struct A_msg {
     BlockNumber blocknum;
 };
 
+bool enable_remote_storage = false;
+/* 
 #define SmgrReadLock (&MainLWLockArray[45].lock)
 
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-
+#define NUM_INDIVIDUAL_LWLOCKS		46
+*/
 void
 smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		 char *buffer)
 {
-  // RelFileNode* ptr_rfn = reln;
-    if (!enable_remote_storage) {
+	//elog(LOG, "In smgrread function");
+    if (!enable_remote_storage) { // race condition ??
         smgrsw[reln->smgr_which].smgr_read(reln, forknum, blocknum, buffer);
         return;
     }
    
-   // LWLockAcquire(SmgrReadLock, LW_EXCLUSIVE);
+  //  LWLockAcquire(SmgrReadLock, LW_EXCLUSIVE);
 
   //  elog(LOG, "LWLock acquired\n");
     
     if (!A_inited) {
         A_inited = true;
-        A_init();
+        connect_storage();
     }
  
     struct A_msg msg = {*((RelFileNode*)reln), forknum, blocknum};
-    if (write(A_cl[0], &msg, sizeof(msg)) < sizeof(msg)) {
-        elog(LOG, "Error writing to storage node\n");
-        exit(1);
+    if (write(storage_node_fd, &msg, sizeof(msg)) < sizeof(msg)) {
+        elog(PANIC, "Error writing to storage node\n");
     }
 
     elog(LOG, "Message written\n");
     
-    if (read(A_cl[0], buffer, A_pagesize) < A_pagesize) {
-        elog(LOG, "Error reading page from storage node\n");
-        exit(1);
+    if (read(storage_node_fd, buffer, A_pagesize) < A_pagesize) {
+        elog(PANIC, "Error reading page from storage node\n");
     }
 
     elog(LOG, "Message read\n");
 
-  //  LWLockRelease(SmgrReadLock);
+   // LWLockRelease(SmgrReadLock);
 
    // elog(LOG, "LWLock released\n");
 }

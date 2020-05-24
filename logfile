@@ -1,0 +1,2 @@
+2020-05-21 22:14:54.314 MSK [15760] FATAL:  lock file "postmaster.pid" already exists
+2020-05-21 22:14:54.314 MSK [15760] HINT:  Is another postmaster (PID 15303) running in data directory "/home/kiruha/progs/open-aurora/LocalDB/Logic_node"?

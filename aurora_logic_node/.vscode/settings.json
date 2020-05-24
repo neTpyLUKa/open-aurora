@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "string.h": "c",
+        "smgr.h": "c",
+        "unordered_map": "cpp",
+        "*.def": "cpp",
+        "bufmgr.h": "c",
+        "lwlock.h": "c",
+        "walwriter.h": "c"
+    }
+}

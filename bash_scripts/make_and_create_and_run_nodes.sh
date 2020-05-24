@@ -59,11 +59,9 @@ if [ -d LocalDB ]; then
     echo "Remove old Database"
     rm -rf LocalDB
 fi
-
+# todo remove this ???
 echo "Database Initialisation:"
 ./aurora_logic_node/pgsql1/bin/initdb LocalDB/Logic_node
-
-echo -n -e "\0\0\0\0" > LocalDB/number
 
 echo port=$1 >> LocalDB/Logic_node/postgresql.conf
 
@@ -75,7 +73,7 @@ echo "Start of Primary node:"
 
 cd ../../../aurora_storage_node/pgsql1/bin
 
-for node_number in {1..1}
+for node_number in {1..2}
 do
 	echo "Creating storage node_"$node_number" on port: $(($1 + $node_number))"
 	#./initdb ~/LocalDB/Storage_node_$node_number
@@ -87,11 +85,8 @@ do
 	echo "Start storage node"
 	./pg_ctl -D ../../../LocalDB/Storage_node_$node_number/ -l ../../../LocalDB/pg_storage_logs start
 
-	for backend_id in {0..1}
-	do
         echo "Start function with backend"
-	./psql postgres -p $(($1 + $node_number)) -c "SELECT read_functions_mon_main($backend_id);" &
-	done
+	./psql postgres -p $(($1 + $node_number)) -c "SELECT read_functions_mon_main(0);" &
   #  echo "load 'read_functions';" | ./psql postgres -p $(($1 + $node_number))
 done
 
