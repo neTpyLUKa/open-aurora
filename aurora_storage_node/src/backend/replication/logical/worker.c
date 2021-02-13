@@ -1601,6 +1601,8 @@ ApplyWorkerMain(Datum main_arg)
 											  MyLogicalRepWorker->userid,
 											  0);
 
+
+
 	/* Load the subscription into persistent memory context. */
 	ApplyContext = AllocSetContextCreate(TopMemoryContext,
 										 "ApplyContext",

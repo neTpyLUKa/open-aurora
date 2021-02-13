@@ -46,6 +46,8 @@ if ! (make -j10 && make install) > /dev/null; then
     exit 1
 fi
 
+#exit 0 # tmp
+
 cd contrib/read_functions/
 echo "Start storage extention compilation"
 if ! (make install) > /dev/null; then
@@ -63,31 +65,41 @@ fi
 echo "Database Initialisation:"
 ./aurora_logic_node/pgsql1/bin/initdb LocalDB/Logic_node
 
+#cp -r LocalDB/Logic_node LocalDB/Storage_node_1
+	
 echo port=$1 >> LocalDB/Logic_node/postgresql.conf
+#cp logic_node.auto.conf LocalDB/Logic_node/postgresql.auto.conf
 
-cd aurora_logic_node/pgsql1/bin
+#./aurora_logic_node/pgsql1/bin/psql postgres -p 5432 -c "CREATE EXTENSION read_functions;"
 
-echo "Start of Primary node:"
-./pg_ctl -D../../../LocalDB/Logic_node -l ../../../LocalDB/pg_logic_logs start
-./psql postgres -p $1 -c "CREATE EXTENSION read_functions;"
+aurora_logic_node/pgsql1/bin/pg_ctl -D LocalDB/Logic_node -l LocalDB/pg_logic_logs start
 
-cd ../../../aurora_storage_node/pgsql1/bin
+./aurora_storage_node/pgsql1/bin/pg_basebackup -p $1 -D LocalDB/Storage_node_1 -Xf -R
 
-for node_number in {1..2}
-do
-	echo "Creating storage node_"$node_number" on port: $(($1 + $node_number))"
+
+echo port=5433 >> LocalDB/Storage_node_1/postgresql.conf
+
+#./aurora_storage_node/pgsql1/bin/pg_basebackup -p $1 -D LocalDB/Storage_node_1 -R
+
+
+#cp storage_node.auto.conf LocalDB/Storage_node_1/postgresql.auto.conf
+ 	
+./aurora_storage_node/pgsql1/bin/pg_ctl -D LocalDB/Storage_node_1/ -l LocalDB/pg_storage_logs start
+   	
+#./aurora_storage_node/pgsql1/bin/psql postgres -p 5433 -c "SELECT read_functions_mon_main(0);" &
+
+
+#echo "Start of Primary node:"
+#cd ../../../aurora_storage_node/pgsql1/bin
+
+#for node_number in {1..1}
+#do
+#	echo "Creating storage node_"$node_number" on port: $(($1 + $node_number))"
 	#./initdb ~/LocalDB/Storage_node_$node_number
 
-    ./pg_basebackup -p $1 -D ../../../LocalDB/Storage_node_$node_number -Fp -Xs -P -R
-	echo "Change config"
-	echo port=$(($1 + $node_number)) >> ../../../LocalDB/Storage_node_$node_number/postgresql.conf
+#echo "Change config"
  #   echo "shared_preload_libraries='read_functions'" >> ~/LocalDB/Storage_node_$node_number/postgresql.conf
-	echo "Start storage node"
-	./pg_ctl -D ../../../LocalDB/Storage_node_$node_number/ -l ../../../LocalDB/pg_storage_logs start
-
-        echo "Start function with backend"
-	./psql postgres -p $(($1 + $node_number)) -c "SELECT read_functions_mon_main(0);" &
+#	echo "Start storage node"
+ #       echo "Start function with backend"
   #  echo "load 'read_functions';" | ./psql postgres -p $(($1 + $node_number))
-done
-
-
+#done

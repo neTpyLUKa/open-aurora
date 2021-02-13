@@ -66,7 +66,7 @@ typedef struct f_smgr
 static const f_smgr smgrsw[] = {
 	/* magnetic disk */
 	{
-		.smgr_init = mdinit,
+		.smgr_init = mdinit, // no fsyscalls
 		.smgr_shutdown = NULL,
 		.smgr_close = mdclose,
 		.smgr_create = mdcreate,
@@ -109,6 +109,7 @@ void
 smgrinit(void)
 {
 	int			i;
+	elog(LOG, "SMGR smgrinit");
 
 	for (i = 0; i < NSmgr; i++)
 	{
@@ -146,6 +147,8 @@ smgropen(RelFileNode rnode, BackendId backend)
 	RelFileNodeBackend brnode;
 	SMgrRelation reln;
 	bool		found;
+
+	elog(LOG, "SMGR smgropen");
 
 	if (SMgrRelationHash == NULL)
 	{
@@ -199,6 +202,7 @@ smgropen(RelFileNode rnode, BackendId backend)
 void
 smgrsetowner(SMgrRelation *owner, SMgrRelation reln)
 {
+	elog(LOG, "SMGR smgrsetowner");
 	/* We don't support "disowning" an SMgrRelation here, use smgrclearowner */
 	Assert(owner != NULL);
 
@@ -228,6 +232,7 @@ smgrsetowner(SMgrRelation *owner, SMgrRelation reln)
 void
 smgrclearowner(SMgrRelation *owner, SMgrRelation reln)
 {
+	elog(LOG, "SMGR smgrclearowner");
 	/* Do nothing if the SMgrRelation object is not owned by the owner */
 	if (reln->smgr_owner != owner)
 		return;
@@ -248,6 +253,7 @@ smgrclearowner(SMgrRelation *owner, SMgrRelation reln)
 bool
 smgrexists(SMgrRelation reln, ForkNumber forknum)
 {
+	elog(LOG, "SMGR smgrexists");
 	return smgrsw[reln->smgr_which].smgr_exists(reln, forknum);
 }
 
@@ -257,6 +263,8 @@ smgrexists(SMgrRelation reln, ForkNumber forknum)
 void
 smgrclose(SMgrRelation reln)
 {
+	elog(LOG, "SMGR smgrclose");
+
 	SMgrRelation *owner;
 	ForkNumber	forknum;
 
@@ -287,6 +295,8 @@ smgrclose(SMgrRelation reln)
 void
 smgrcloseall(void)
 {
+	elog(LOG, "SMGR smgrcloseall");
+
 	HASH_SEQ_STATUS status;
 	SMgrRelation reln;
 
@@ -311,6 +321,7 @@ smgrcloseall(void)
 void
 smgrclosenode(RelFileNodeBackend rnode)
 {
+	elog(LOG, "SMGR smgrclosenode");
 	SMgrRelation reln;
 
 	/* Nothing to do if hashtable not set up */
@@ -337,6 +348,7 @@ smgrclosenode(RelFileNodeBackend rnode)
 void
 smgrcreate(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 {
+	elog(LOG, "SMGR smgrcreate");
 	/*
 	 * Exit quickly in WAL replay mode if we've already opened the file. If
 	 * it's open, it surely must exist.
@@ -378,6 +390,8 @@ smgrdounlink(SMgrRelation reln, bool isRedo)
 	RelFileNodeBackend rnode = reln->smgr_rnode;
 	int			which = reln->smgr_which;
 	ForkNumber	forknum;
+
+	elog(LOG, "SMGR smgrdounlink");
 
 	/* Close the forks at smgr level */
 	for (forknum = 0; forknum <= MAX_FORKNUM; forknum++)
@@ -435,6 +449,8 @@ smgrdounlinkall(SMgrRelation *rels, int nrels, bool isRedo)
 	int			i = 0;
 	RelFileNodeBackend *rnodes;
 	ForkNumber	forknum;
+
+	elog(LOG, "SMGR smgrdounlinkall");
 
 	if (nrels == 0)
 		return;
@@ -513,6 +529,8 @@ smgrdounlinkfork(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 	RelFileNodeBackend rnode = reln->smgr_rnode;
 	int			which = reln->smgr_which;
 
+	elog(LOG, "SMGR smgrdounlinkforkit");
+
 	/* Close the fork at smgr level */
 	smgrsw[which].smgr_close(reln, forknum);
 
@@ -562,6 +580,8 @@ void
 smgrextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		   char *buffer, bool skipFsync)
 {
+	elog(LOG, "SMGR smgrextend");
+
 	smgrsw[reln->smgr_which].smgr_extend(reln, forknum, blocknum,
 										 buffer, skipFsync);
 }
@@ -572,6 +592,8 @@ smgrextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 void
 smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum)
 {
+	elog(LOG, "SMGR smgrprefetch");
+
 	smgrsw[reln->smgr_which].smgr_prefetch(reln, forknum, blocknum);
 }
 
@@ -605,6 +627,7 @@ int storage_node_fd;
 int A_pagesize = 8192;
 bool A_inited = false;
 
+bool enable_remote_storage = false; // todo after restart it is false again
 
 void connect_storage() {
     /*int fd = open(LocalDBPath, O_RDONLY);
@@ -662,9 +685,9 @@ struct A_msg {
     struct RelFileNode rfn;
     ForkNumber forknum;
     BlockNumber blocknum;
+	Oid userid;
 };
 
-bool enable_remote_storage = false;
 /* 
 #define SmgrReadLock (&MainLWLockArray[45].lock)
 
@@ -676,6 +699,7 @@ smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 {
 	//elog(LOG, "In smgrread function");
     if (!enable_remote_storage) { // race condition ??
+		elog(LOG, "Hoba boba");
         smgrsw[reln->smgr_which].smgr_read(reln, forknum, blocknum, buffer);
         return;
     }
@@ -689,7 +713,7 @@ smgrread(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
         connect_storage();
     }
  
-    struct A_msg msg = {*((RelFileNode*)reln), forknum, blocknum};
+    struct A_msg msg = {reln->smgr_rnode.node, forknum, blocknum, GetUserId()};
     if (write(storage_node_fd, &msg, sizeof(msg)) < sizeof(msg)) {
         elog(PANIC, "Error writing to storage node\n");
     }
@@ -728,6 +752,7 @@ void
 smgrwrite(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 		  char *buffer, bool skipFsync)
 {
+	elog(LOG, "SMGR smgrwrite");
 	smgrsw[reln->smgr_which].smgr_write(reln, forknum, blocknum,
 										buffer, skipFsync);
 }
@@ -741,6 +766,7 @@ void
 smgrwriteback(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 			  BlockNumber nblocks)
 {
+	elog(LOG, "SMGR smgrwriteback");
 	smgrsw[reln->smgr_which].smgr_writeback(reln, forknum, blocknum,
 											nblocks);
 }
@@ -752,6 +778,7 @@ smgrwriteback(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 BlockNumber
 smgrnblocks(SMgrRelation reln, ForkNumber forknum)
 {
+	elog(LOG, "SMGR smgrnblocks");
 	return smgrsw[reln->smgr_which].smgr_nblocks(reln, forknum);
 }
 
@@ -764,6 +791,7 @@ smgrnblocks(SMgrRelation reln, ForkNumber forknum)
 void
 smgrtruncate(SMgrRelation reln, ForkNumber forknum, BlockNumber nblocks)
 {
+	elog(LOG, "SMGR smgrtruncate");
 	/*
 	 * Get rid of any buffers for the about-to-be-deleted blocks. bufmgr will
 	 * just drop them without bothering to write the contents.
@@ -814,6 +842,7 @@ smgrtruncate(SMgrRelation reln, ForkNumber forknum, BlockNumber nblocks)
 void
 smgrimmedsync(SMgrRelation reln, ForkNumber forknum)
 {
+	elog(LOG, "SMGR smgrimmedsync");
 	smgrsw[reln->smgr_which].smgr_immedsync(reln, forknum);
 }
 

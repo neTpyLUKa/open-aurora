@@ -3691,6 +3691,201 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 #endif
 }
 
+// Code starts here
+
+#include "storage/relfilenode.h"
+#include "storage/bufmgr.h"
+#include "access/relation.h"
+#include "storage/lmgr.h"
+
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdlib.h>
+
+int A_sockfd = -1;
+
+int accept_connection(void) {
+    int port = 16000;
+    elog(LOG, "----------------------------------------------------------------------------------\n");
+    elog(LOG, "Initializing socket..., id=%d\n", MyBackendId);
+
+    if (A_sockfd == -1) {
+        A_sockfd = socket(PF_INET, SOCK_STREAM, 0);
+        if (A_sockfd < 0) {
+            elog(PANIC, "Error creating socket\n");
+        }
+
+        elog(LOG, "Socket created\n");
+    
+        int val = 1;
+        setsockopt(A_sockfd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
+        setsockopt(A_sockfd, SOL_SOCKET, SO_REUSEPORT, &val, sizeof(val));
+        struct sockaddr_in info;
+        info.sin_addr.s_addr = INADDR_ANY;
+        info.sin_family = AF_INET;
+        info.sin_port = htons(port);
+
+        if (bind(A_sockfd, (struct sockaddr*)&info, sizeof(info)) < 0) {
+            elog(PANIC, "Error setting socket params");
+            return -1;
+        }
+
+        elog(LOG, "Port %d binded", port);
+    
+        if (listen(A_sockfd, 5) < 0) {
+            elog(PANIC, "Too many connections?");
+        }
+    }
+    
+    elog(LOG, "Accepting connection");
+    struct sockaddr_in paddr;
+    socklen_t len = sizeof(paddr); // todo fork
+    int cl = accept(A_sockfd, (struct sockaddr*)&paddr, &len);
+    if (cl < 0) {
+        elog(PANIC, "Error accepting new connection");
+        return -1;
+    }
+    elog(LOG, "Connection accepted, %d", ntohs(paddr.sin_port));
+    return cl;
+}
+
+struct A_msg {
+    struct RelFileNode rfn;
+    ForkNumber forknum;
+    BlockNumber blocknum;
+	Oid userid;
+};
+
+const int A_pagesize = 8192; // todo use GetPageSize instead
+
+void RemoteSmgrReadMain(void) {
+	int id = 23411;
+    while (true) {
+        elog(LOG, "-----------------------------------------------------------\n");
+        int sockfd = accept_connection();
+        if (sockfd == -1) {
+            elog(LOG, "Error accepting connection, retrying...");
+            continue;
+        }
+
+        pid_t ch_pid = fork_process(); // fork wrapper
+		elog(LOG, "Child init");
+        if (ch_pid < 0) {
+            elog(FATAL, "Error forking");
+        } else if (ch_pid > 0) { // in parent
+            ++id;
+            continue;
+        }
+       // InitProcessGlobals();
+        //InitPostmasterChild(); // independent latch
+        
+		//IsUnderPostmaster = false;
+		//InitProcess();
+		bool dbconnected = false;
+		
+        int my_sln = 0;
+
+        while (true) {
+			elog(LOG, "Reading a message");
+            struct A_msg msg;
+            if (read(sockfd, &msg, sizeof(msg)) < sizeof(msg)) {
+                elog(LOG, "Error reading from Primary node\n");
+                close(sockfd);
+                proc_exit(1);
+            }
+			elog(LOG, "Message read sln=%d, dbOid=%d, userid=%d", my_sln, msg.rfn.dbNode, msg.userid);
+			if (!dbconnected) {
+				dbconnected = true;
+			//	BackgroundWorkerInitializeConnectionByOid(msg.rfn.dbNode, msg.userid, 0);
+			}
+
+         /*   SMgrRelation smgr_rel = smgropen(msg.rfn, id);
+            while (!smgrexists(smgr_rel, msg.forknum)) {
+                pg_usleep(100000);
+                smgr_rel = smgropen(msg.rfn, id);
+                elog(LOG, "Not exists, %d, %d", msg.rfn.relNode, msg.forknum);
+            }*/
+
+            
+            Relation rel = NULL;
+
+            int try_num = 0;
+
+            elog(LOG, "relNode = %d, fork_num = %d\n", msg.rfn.relNode, msg.forknum);
+
+            while (true) {
+                elog(LOG, "Try Number %d", try_num++);
+
+                LockRelationOid(msg.rfn.relNode, AccessShareLock);
+                
+				elog(LOG, "Locked");
+
+                rel = RelationIdGetRelation(msg.rfn.relNode);
+
+                
+                if (rel != NULL) {
+                    break;
+                }
+				elog(LOG, "Before unlock");
+                UnlockRelationOid(msg.rfn.relNode, AccessShareLock);
+            }
+
+            elog(LOG, "Got relation\n");
+          //  Buffer buf = ReadBufferWithoutRelcache(msg.rfn, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
+            Buffer buf = ReadBufferExtended(rel, msg.forknum, msg.blocknum, RBM_NORMAL, NULL);
+            //Buffer buf = ReadBuffer(rel, msg.blocknum); // todo use ReadBufferExtended, bypass forkNum
+            
+            LockBuffer(buf, BUFFER_LOCK_SHARE);
+            elog(LOG, "Got buffer\n");
+            char* ptr = BufferGetPage(buf);
+            
+            elog(LOG, "Start send\n");
+            if (write(sockfd, ptr, A_pagesize) < A_pagesize) {
+                elog(LOG, "Error sending page\n");
+                close(sockfd);
+                UnlockReleaseBuffer(buf);
+                relation_close(rel, AccessShareLock);
+                proc_exit(1);
+            }
+
+            elog(LOG, "Message written %d\n", my_sln++);
+            UnlockReleaseBuffer(buf);
+            relation_close(rel, AccessShareLock);
+        }
+    }
+    elog(PANIC, "How I get here?");
+}
+/*
+void StartupRemoteSmgrRead(void) {
+	MyPMChildSlot = AssignPostmasterChildSlot();
+
+	pid_t pid = fork_process();
+	
+	if (pid < 0) {
+		elog(PANIC, "Error forking process");
+	}
+
+	if (pid == 0) {
+		InitPostmasterChild();
+
+		ClosePostmasterPorts(false);
+
+		MemoryContextSwitchTo(TopMemoryContext);
+		MemoryContextDelete(PostmasterContext);
+		PostmasterContext = NULL;
+
+		//InitProcess();
+
+		RemoteSmgrReadMain();
+
+		ExitPostmaster(0);
+	}
+}*/
+
+// Code ends here (there is also function call in the bottom)
 
 /* ----------------------------------------------------------------
  * PostgresMain
@@ -3703,6 +3898,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
  * username is the PostgreSQL user name to be used for the session.
  * ----------------------------------------------------------------
  */
+
 void
 PostgresMain(int argc, char *argv[],
 			 const char *dbname,
@@ -4219,6 +4415,18 @@ PostgresMain(int argc, char *argv[],
 		{
 			case 'Q':			/* simple query */
 				{
+					elog(LOG, "SIMPLE QUERY");
+				/*	LockRelationOid(16386, AccessShareLock);
+                
+					elog(LOG, "Locked");
+
+                	RelationIdGetRelation(16386);
+
+					elog(LOG, "Before unlock");
+    	            UnlockRelationOid(16386, AccessShareLock);*/
+					elog(LOG, "ABACABA");
+					//StartupRemoteSmgrRead(); // exit on fail, thus no return value
+					RemoteSmgrReadMain();
 					const char *query_string;
 
 					/* Set statement_timestamp() */

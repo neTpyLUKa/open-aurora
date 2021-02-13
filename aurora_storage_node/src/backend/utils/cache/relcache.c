@@ -1993,17 +1993,19 @@ RelationIdGetRelation(Oid relationId)
 	Relation	rd;
 
 	/* Make sure we're in an xact, even if this ends up being a cache hit */
-	Assert(IsTransactionState());
+//	Assert(IsTransactionState());
 
 	/*
 	 * first try to find reldesc in the cache
 	 */
 	RelationIdCacheLookup(relationId, rd);
-
+	elog(LOG, "1");
 	if (RelationIsValid(rd))
 	{
+		elog(LOG, "1.5");
 		RelationIncrementReferenceCount(rd);
-		/* revalidate cache entry if necessary */
+		elog(LOG, "2");
+	/* revalidate cache entry if necessary */
 		if (!rd->rd_isvalid)
 		{
 			/*
@@ -2016,7 +2018,7 @@ RelationIdGetRelation(Oid relationId)
 				RelationReloadIndexInfo(rd);
 			else
 				RelationClearRelation(rd, true);
-
+			elog(LOG, "3");
 			/*
 			 * Normally entries need to be valid here, but before the relcache
 			 * has been initialized, not enough infrastructure exists to
@@ -2034,9 +2036,15 @@ RelationIdGetRelation(Oid relationId)
 	 * no reldesc in the cache, so have RelationBuildDesc() build one and add
 	 * it.
 	 */
+	elog(LOG, "4");
+	
 	rd = RelationBuildDesc(relationId, true);
+	elog(LOG, "5");
+	
 	if (RelationIsValid(rd))
 		RelationIncrementReferenceCount(rd);
+	elog(LOG, "6");
+	
 	return rd;
 }
 
@@ -2056,10 +2064,15 @@ RelationIdGetRelation(Oid relationId)
 void
 RelationIncrementReferenceCount(Relation rel)
 {
+	elog(LOG, "9");
 	ResourceOwnerEnlargeRelationRefs(CurrentResourceOwner);
+	elog(LOG, "10");
 	rel->rd_refcnt += 1;
-	if (!IsBootstrapProcessingMode())
+	if (!IsBootstrapProcessingMode()) {
+		elog(LOG, "10.5");
 		ResourceOwnerRememberRelationRef(CurrentResourceOwner, rel);
+		elog(LOG, "11");
+	}
 }
 
 /*

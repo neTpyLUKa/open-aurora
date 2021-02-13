@@ -136,6 +136,7 @@ PG_FUNCTION_INFO_V1(read_functions_mon_main);
 Datum
 read_functions_mon_main(PG_FUNCTION_ARGS) // todo fix signature (now accepting int, need void)
 {
+    int id = 23411;
     while (true) {
         elog(LOG, "-----------------------------------------------------------\n");
         int sockfd = accept_connection();
@@ -148,8 +149,11 @@ read_functions_mon_main(PG_FUNCTION_ARGS) // todo fix signature (now accepting i
         if (ch_pid < 0) {
             elog(FATAL, "Error forking");
         } else if (ch_pid > 0) { // in parent
+            ++id;
             continue;
         }
+        InitProcessGlobals();
+        InitPostmasterChild(); // independent latch
         
         int my_sln = 0;
 
@@ -161,13 +165,20 @@ read_functions_mon_main(PG_FUNCTION_ARGS) // todo fix signature (now accepting i
                 proc_exit(1);
             }
 
+         /*   SMgrRelation smgr_rel = smgropen(msg.rfn, id);
+            while (!smgrexists(smgr_rel, msg.forknum)) {
+                pg_usleep(100000);
+                smgr_rel = smgropen(msg.rfn, id);
+                elog(LOG, "Not exists, %d, %d", msg.rfn.relNode, msg.forknum);
+            }*/
+
             elog(LOG, "Message read %d\n", my_sln);
 
             Relation rel = NULL;
 
             int try_num = 0;
 
-            elog(LOG, "relNode = %d\n", msg.rfn.relNode);
+            elog(LOG, "relNode = %d, fork_num = %d\n", msg.rfn.relNode, msg.forknum);
 
             while (true) {
                 elog(LOG, "Try Number %d\n", try_num++);
@@ -180,6 +191,7 @@ read_functions_mon_main(PG_FUNCTION_ARGS) // todo fix signature (now accepting i
                 if (rel != NULL) {
                     break;
                 }
+                UnlockRelationOid(msg.rfn.relNode, AccessShareLock);
             }
 
             elog(LOG, "Got relation\n");

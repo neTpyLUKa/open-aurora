@@ -213,19 +213,25 @@ ResourceArrayEnlarge(ResourceArray *resarr)
 	Datum	   *olditemsarr;
 	Datum	   *newitemsarr;
 
-	if (resarr->nitems < resarr->maxitems)
+	elog(LOG, "12");
+	if (resarr->nitems < resarr->maxitems) {
+		elog(LOG, "12.25");
 		return;					/* no work needed */
-
+	}
+	elog(LOG, "12.5");
 	olditemsarr = resarr->itemsarr;
 	oldcap = resarr->capacity;
+	elog(LOG, "13");
 
 	/* Double the capacity of the array (capacity must stay a power of 2!) */
 	newcap = (oldcap > 0) ? oldcap * 2 : RESARRAY_INIT_SIZE;
 	newitemsarr = (Datum *) MemoryContextAlloc(TopMemoryContext,
 											   newcap * sizeof(Datum));
+	elog(LOG, "14");
 	for (i = 0; i < newcap; i++)
 		newitemsarr[i] = resarr->invalidval;
-
+elog(LOG, "15");
+	
 	/* We assume we can't fail below this point, so OK to scribble on resarr */
 	resarr->itemsarr = newitemsarr;
 	resarr->capacity = newcap;
@@ -241,14 +247,19 @@ ResourceArrayEnlarge(ResourceArray *resarr)
 		 * the entries after nitems are garbage, but that shouldn't matter
 		 * because we won't get here unless nitems was equal to oldcap.
 		 */
+		elog(LOG, "16");
+	
 		for (i = 0; i < oldcap; i++)
 		{
 			if (olditemsarr[i] != resarr->invalidval)
 				ResourceArrayAdd(resarr, olditemsarr[i]);
 		}
-
+elog(LOG, "16");
+	
 		/* And release old array. */
 		pfree(olditemsarr);
+		elog(LOG, "17");
+	
 	}
 
 	Assert(resarr->nitems < resarr->maxitems);
@@ -1051,7 +1062,9 @@ ResourceOwnerForgetCatCacheListRef(ResourceOwner owner, CatCList *list)
 void
 ResourceOwnerEnlargeRelationRefs(ResourceOwner owner)
 {
+	elog(LOG, "ASD");
 	ResourceArrayEnlarge(&(owner->relrefarr));
+	elog(LOG, "DSA");
 }
 
 /*
